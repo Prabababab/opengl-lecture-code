@@ -1,4 +1,13 @@
 #include "extern/glad/glad.h"
+#include "extern/stb_image.h"
+
+#include "extern/glm/glm.hpp"
+#include "extern/glm/gtc/matrix_transform.hpp"
+#include "extern/glm/gtc/type_ptr.hpp"
+#include "extern/glm/gtx/string_cast.hpp"
+
+#include "helpers/shader_class.h"
+
 #include <GL/gl.h>
 #include <GLFW/glfw3.h>
 
@@ -6,22 +15,17 @@
 
 const int width = 800, height = 600;
 
-const char *vertex_shader_source =
-    "#version 330 core\n"
-    "layout (location = 0) in vec3 aPos;\n"
-    "void main() {\n"
-    "   gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0f);\n"
-    "}\0";
-
-const char *fragment_shader_source =
-    "#version 330 core\n"
-    "out vec4 FragColor;\n"
-    "void main() {\n"
-    "  FragColor = vec4(1.0f, 0.5f, 0.2f, 1.0f);"
-    "}\0";
-
 GLfloat vertices[] = {
-    -0.5f, -0.5f, 0.0f, 0.0f, 0.5f, 0.0f, 0.5f, -0.5f, 0.0f,
+// Positions          // Texture Coordinates
+-0.5f, -0.5f, 0.0f,   0.0f, 0.0f,
+0.5f, 0.5f, 0.0f,     1.0f, 1.0f,
+0.5f, -0.5f, 0.0f,    1.0f, 0.0f,
+-0.5f, 0.5f, 0.0f,    0.0f, 1.0f,
+};
+
+GLuint indices[] = {
+0, 1, 2,
+0, 1, 3,
 };
 
 void framebuffer_size_callback(GLFWwindow *window, int width, int height);
@@ -42,7 +46,7 @@ int main() {
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-  GLFWwindow *window = glfwCreateWindow(width, height, "Triangle!", NULL, NULL);
+  GLFWwindow *window = glfwCreateWindow(width, height, "Transform!", NULL, NULL);
   if (window == NULL) {
     std::cout << "Failed to Create a Window :(\n";
     glfwTerminate();
@@ -59,29 +63,18 @@ int main() {
   glViewport(0, 0, 800, 600);
   glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
-  //+-------------------------------------------------------------------------
-  // Create a Vertex Shader
-  GLuint vertex_shader;
-  vertex_shader = glCreateShader(GL_VERTEX_SHADER);
+  //+-------------------------------
+  // Create Shaders
+  shader_class vertex_shader("../shader_folder/shader.vert", GL_VERTEX_SHADER);
+  shader_class fragment_shader("../shader_folder/shader.frag", GL_FRAGMENT_SHADER);
 
-  // Bind Shader Code
-  glShaderSource(vertex_shader, 1, &vertex_shader_source, NULL);
-  glCompileShader(vertex_shader);
+  //seperately compile the shaders
+  vertex_shader.compile_shader();
+  fragment_shader.compile_shader();
 
-  // Shader Error Checking
-  shader_info("Vertex Shader", vertex_shader);
-  //+-------------------------------------------------------------------------
-  //+-------------------------------------------------------------------------
-  // Create a Fragment Shader
-  GLuint fragment_shader;
-  fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
-
-  // Bind Shader Code
-  glShaderSource(fragment_shader, 1, &fragment_shader_source, NULL);
-  glCompileShader(fragment_shader);
-
-  // Shader Error Checking
-  shader_info("Fragment Shader", fragment_shader);
+  //error checking
+  vertex_shader.compile_status();
+  fragment_shader.compile_status();
   //+-------------------------------------------------------------------------
 
   //+-------------------------------------------------------------------------
@@ -90,8 +83,8 @@ int main() {
   shader_program = glCreateProgram();
 
   // Attach Shaders to the shader program
-  glAttachShader(shader_program, vertex_shader);
-  glAttachShader(shader_program, fragment_shader);
+  vertex_shader.attach_to(shader_program);
+  fragment_shader.attach_to(shader_program);
 
   // Link shader program to the OpenGL program to run
   glLinkProgram(shader_program);
@@ -109,43 +102,95 @@ int main() {
   glUseProgram(shader_program);
 
   // Delete the shader objects since they're not necessary anymore
-  glDeleteShader(vertex_shader);
-  glDeleteShader(fragment_shader);
+  vertex_shader.delete_shader();
+  fragment_shader.delete_shader();
 
   //+-------------------------------------------------------------------------
   // Make a VAO (Vertex Array Object) and VBO (Vertex Buffer Object)
-  GLuint VAO, VBO;
+  GLuint VAO, VBO, EBO;
   glGenVertexArrays(1, &VAO);
   glGenBuffers(1, &VBO);
+  glGenBuffers(1, &EBO);
 
   // Bind this unsigned int as a Vertex Array Object
   glBindVertexArray(VAO);
   // Bind this unsigned int as a Vertex Array Buffer
   glBindBuffer(GL_ARRAY_BUFFER, VBO);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+
   glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+  glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
 
   // Describe the different locations of information in the vertex array
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *)0);
   glEnableVertexAttribArray(0);
+  glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *)(3 * sizeof(float)));
+  glEnableVertexAttribArray(1);
   //+-------------------------------------------------------------------------
 
+  //Create a texture
+  GLuint texture_1;
+  glGenTextures(1, &texture_1);
+  glBindTexture(GL_TEXTURE_2D, texture_1);
+
+  // Set some parameters
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+  int width, height, nr_channels;
+  stbi_set_flip_vertically_on_load(true);
+  unsigned char* data = stbi_load("../resources/texture_1.png", &width, &height, &nr_channels, 0);
+
+  if(data){
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+    glGenerateMipmap(GL_TEXTURE_2D);
+  }else{
+    std::cout << "Failed to Create Texture\n";
+    return -1;
+  }
+  stbi_image_free(data);
+
+  glUniform1i(glGetUniformLocation(shader_program, "texture"), 0);
+
+  float t1 = 0.0f, t2 = 0.125f, t3 = 0.0f;
+  float theta = 100.0f, r1 = 1.0f, r2 = 0.0f, r3 = 0.0;
+  float s1 = 1.0f, s2 = 1.0f, s3 = 1.0;
+
   while (!glfwWindowShouldClose(window)) {
+    glClear(GL_COLOR_BUFFER_BIT);
     // Set a new color for OpenGL to clear the screen with
-    glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+    glClearColor(0.207f, 0.866f, 0.545f, 1.0f);
+
+    glm::mat4 m = glm::mat4(1.0f);
+
+    int time = glfwGetTime();
+    m = glm::translate(m, glm::vec3(t1, t2, t3));
+
+    m = glm::rotate(m, (float)time, glm::vec3(r1, r2, r3));
+
+    m = glm::scale(m, glm::vec3(s1 * sin(time), s2 * sin(time), s3 * sin(time)));
+
+    unsigned int transformLoc = glGetUniformLocation(shader_program, "transform");
+    glUniformMatrix4fv(transformLoc, 1, GL_FALSE, glm::value_ptr(m));
 
     glUseProgram(shader_program);
     glBindVertexArray(VAO);
-    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    glBindVertexArray(0);
 
-    glfwSwapBuffers(window);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture_1);
 
     // Poll for Input from the keyboard
-    glfwPollEvents();
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
       glfwSetWindowShouldClose(window, true);
 
     // Clear the Screen with the color set earlier
-    glClear(GL_COLOR_BUFFER_BIT);
+
+    glfwSwapBuffers(window);
+    glfwPollEvents();
   }
 
   glDeleteVertexArrays(1, &VAO);

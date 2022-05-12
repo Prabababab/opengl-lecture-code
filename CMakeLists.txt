@@ -24,5 +24,12 @@ endif()
 
 find_package(OpenGL REQUIRED)
 
-add_executable(gllc main.cpp extern/glad/glad.c)
+set(SOURCES
+  main.cpp
+  extern/glad/glad.c
+  helpers/shader_class.cpp
+  extern/stb_image.cpp
+)
+
+add_executable(gllc ${SOURCES})
 target_link_libraries(gllc glfw OpenGL::GL)
